@@ -1,0 +1,6 @@
+# ============================================================
+# KEYWORDS FILE — Add your seed keywords here, one per line
+# Lines starting with # are comments and will be ignored
+# Empty lines are also ignored
+# ============================================================
+
