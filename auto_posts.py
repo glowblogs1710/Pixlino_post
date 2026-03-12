@@ -40,7 +40,7 @@ IMAGES_PER_HEADING = 10           # images per heading
 POST_STATUS        = "publish"    # publish instantly
 
 # --- Gap between posts ---
-POST_GAP_SECONDS   = 180           # change to 7200 for 2 hour gap in production
+POST_GAP_SECONDS   = 3600           # change to 7200 for 2 hour gap in production
 
 # --- Slug variation words (tried in order if base slug already exists) ---
 SLUG_VARIATIONS = ["hd", "4k", "new", "latest", "best", "images", "3d"]
@@ -893,3 +893,4 @@ if __name__ == "__main__":
 
 
     run(posts_to_create=args.posts, dry_run=args.dry_run)
+
