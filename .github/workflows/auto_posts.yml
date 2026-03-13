@@ -4,8 +4,8 @@
 # Runs every day at 10:00 AM IST (India Standard Time)
 # IST = UTC + 5:30  →  10:00 AM IST = 04:30 UTC
 #
-# Script publishes 10 posts with 2 hour real gap between each.
-# Total runtime = ~20 hours → timeout set to 1260 minutes (21 hours)
+# Script publishes 2 posts with 2 hour real gap between each.
+# Total runtime = ~2 hours → timeout set to 180 minutes (21 hours)
 # ============================================================
 
 name: Auto WordPress Posts
@@ -64,7 +64,7 @@ jobs:
           TELEGRAM_BOT_TOKEN:  ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID:    ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
-          POSTS="${{ github.event.inputs.posts || '10' }}"
+          POSTS="${{ github.event.inputs.posts || '2' }}"
           DRY="${{ github.event.inputs.dry_run || 'false' }}"
 
           if [ "$DRY" = "true" ]; then
