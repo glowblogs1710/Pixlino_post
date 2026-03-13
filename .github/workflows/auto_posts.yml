@@ -29,7 +29,7 @@ on:
 jobs:
   run-auto-posts:
     runs-on: ubuntu-latest
-    timeout-minutes: 1260   # 10 posts x 2 hours = 20 hours + 1 hour buffer
+    timeout-minutes: 180   # 10 posts x 2 hours = 20 hours + 1 hour buffer
 
     steps:
       # ── 1. Checkout repo ───────────────────────────────────
