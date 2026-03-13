@@ -4,6 +4,6 @@
 # Empty lines are also ignored
 # ============================================================
 
-hidden face girl dp,
-hidden face girl photo,
-hidden face girl wallpaper,
+hidden face girl dp
+hidden face girl photo
+hidden face girl wallpaper
