@@ -12,7 +12,7 @@ name: Auto WordPress Posts
 
 on:
   schedule:
-    - cron: "6 5 * * *"   # 04:30 UTC = 10:00 AM IST every day
+    - cron: "45 4 * * *"   # 04:30 UTC = 10:00 AM IST every day
 
   # Manual trigger from GitHub UI
   workflow_dispatch:
