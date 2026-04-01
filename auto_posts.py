@@ -28,19 +28,19 @@ from datetime import datetime, timedelta
 # CONFIGURATION
 # ============================================================
 
-WP_URL             = "https://pixlino.com/wp-json/wp/v2"
+WP_URL             = "https://pixlino.com//wp-json/wp/v2"
 USERNAME           = os.environ.get("WP_USERNAME", "your_wp_username")
 APP_PASSWORD       = os.environ.get("WP_APP_PASSWORD", "your_app_password")
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "your_token")
 TELEGRAM_CHAT_ID   = os.environ.get("TELEGRAM_CHAT_ID", "your_chat_id")
 
 # --- Post settings ---
-POSTS_PER_RUN      = 2            # change to 10 for production
+POSTS_PER_RUN      = 1            # change to 10 for production
 IMAGES_PER_HEADING = 10           # images per heading
 POST_STATUS        = "publish"    # publish instantly
 
 # --- Gap between posts ---
-POST_GAP_SECONDS   = 3600           # change to 7200 for 2 hour gap in production
+POST_GAP_SECONDS   = 60          # change to 7200 for 2 hour gap in production
 
 # --- Slug variation words (tried in order if base slug already exists) ---
 SLUG_VARIATIONS = ["hd", "4k", "new", "latest", "best", "images", "3d"]
@@ -436,6 +436,161 @@ def generate_intro(keyword):
 
 
 # ============================================================
+# INTERNAL LINKING
+# ============================================================
+
+_published_posts_cache = None
+
+def fetch_published_posts_for_linking():
+    """
+    Fetch all published posts from WordPress (id, title, link).
+    Results are cached so we only hit the API once per run.
+    """
+    global _published_posts_cache
+    if _published_posts_cache is not None:
+        return _published_posts_cache
+
+    log("  Fetching published posts for internal linking...")
+    all_posts = []
+    page = 1
+
+    while True:
+        try:
+            r = requests.get(
+                f"{WP_URL}/posts",
+                params={
+                    "per_page": 100,
+                    "page":     page,
+                    "status":   "publish",
+                    "_fields":  "id,title,link,slug",
+                },
+                auth=AUTH,
+                timeout=30
+            )
+            if r.status_code != 200:
+                break
+            data = r.json()
+            if not data:
+                break
+            for post in data:
+                raw   = post.get("title", {})
+                title = raw.get("rendered", "") if isinstance(raw, dict) else str(raw)
+                all_posts.append({
+                    "id":    post["id"],
+                    "title": title.strip(),
+                    "link":  post.get("link", ""),
+                    "slug":  post.get("slug", ""),
+                })
+            page += 1
+            time.sleep(0.3)
+        except Exception as e:
+            log(f"  ⚠ Error fetching posts for linking (page {page}): {e}")
+            break
+
+    log(f"  Fetched {len(all_posts)} published posts for internal linking")
+    _published_posts_cache = all_posts
+    return all_posts
+
+
+def find_relevant_internal_links(keyword, current_title, max_links=3):
+    """
+    Given the current post keyword, find up to max_links relevant published
+    posts to use as internal links.
+
+    Strategy:
+      1. Score every published post by how many words from the current keyword
+         appear in that post's title (case-insensitive).
+      2. Skip the current post itself (exact title match).
+      3. Return the top-scoring posts (minimum score 1).
+    """
+    posts = fetch_published_posts_for_linking()
+
+    kw_words = set(keyword.lower().split())
+    # Remove very common / short stop words so scores are meaningful
+    stop = {"a", "an", "the", "and", "or", "for", "of", "in", "on", "at", "to",
+            "is", "are", "was", "be", "with", "by"}
+    kw_words -= stop
+
+    scored = []
+    for post in posts:
+        if post["title"].strip().lower() == current_title.strip().lower():
+            continue
+        post_title_lower = post["title"].lower()
+        score = sum(1 for w in kw_words if w in post_title_lower)
+        if score > 0:
+            scored.append((score, post))
+
+    # Sort by score descending, then shuffle ties for variety
+    scored.sort(key=lambda x: x[0], reverse=True)
+
+    # Keep top candidates and shuffle within same-score groups for variety
+    top = []
+    prev_score = None
+    group = []
+    for score, post in scored:
+        if score != prev_score:
+            random.shuffle(group)
+            top.extend(group)
+            group = [post]
+            prev_score = score
+        else:
+            group.append(post)
+    random.shuffle(group)
+    top.extend(group)
+
+    selected = top[:max_links]
+    log(f"  Internal links found: {len(selected)} (from {len(scored)} candidates)")
+    for p in selected:
+        log(f"    → [{p['title']}] {p['link']}")
+    return selected
+
+
+def inject_internal_links(intro_text, keyword, current_title, max_links=3):
+    """
+    Insert internal links naturally into the intro paragraph.
+
+    Approach: append a short "Also see:" sentence at the end of the intro
+    that lists anchor links. This is the safest strategy — it never breaks
+    the existing prose and works with any template.
+    """
+    if not intro_text:
+        return intro_text
+
+    links = find_relevant_internal_links(keyword, current_title, max_links=max_links)
+
+    if not links:
+        log("  No relevant internal links found — intro unchanged")
+        return intro_text
+
+    # Build the anchor tags
+    anchors = []
+    for post in links:
+        title_attr = post["title"].replace('"', "&quot;")
+        anchors.append(
+            f'<a href="{post["link"]}" title="{title_attr}">{post["title"]}</a>'
+        )
+
+    if len(anchors) == 1:
+        also_see = anchors[0]
+    elif len(anchors) == 2:
+        also_see = f"{anchors[0]} and {anchors[1]}"
+    else:
+        also_see = ", ".join(anchors[:-1]) + f", and {anchors[-1]}"
+
+    link_paragraph = (
+        f'<p style="font-size:20px;line-height:1.8;margin-top:16px;margin-bottom:28px;color:#333;">'
+        f'You might also enjoy our related collections: {also_see}.'
+        f'</p>'
+    )
+
+    # Always append as a brand-new <p> block after the intro paragraph
+    updated = intro_text.rstrip() + "\n" + link_paragraph
+
+    log(f"  ✓ Injected {len(links)} internal link(s) into intro")
+    return updated
+
+
+# ============================================================
 # META DESCRIPTION
 # ============================================================
 
@@ -710,6 +865,9 @@ def create_wp_post(title, slug, content, category_id, focus_kw, meta_desc):
 # ============================================================
 
 def run(posts_to_create=POSTS_PER_RUN, dry_run=False):
+    global _media_cache, _published_posts_cache
+    _media_cache            = None
+    _published_posts_cache  = None
     STATS.dry_run = dry_run
 
     log("=" * 60)
@@ -773,6 +931,15 @@ def run(posts_to_create=POSTS_PER_RUN, dry_run=False):
             {"id": i, "source_url": f"https://unityimage.com/wp-content/img{i}.jpg", "alt_text": "girl dp"}
             for i in range(1, 500)
         ]
+        # Populate mock published posts so internal linking works in dry-run
+        _published_posts_cache = [
+            {"id": 101, "title": "Cute Girl DP Images HD Free Download",      "link": "https://pixlino.com/cute-girl-dp/",      "slug": "cute-girl-dp"},
+            {"id": 102, "title": "Sad Girl DP Images for WhatsApp",            "link": "https://pixlino.com/sad-girl-dp/",       "slug": "sad-girl-dp"},
+            {"id": 103, "title": "Attitude Girl DP HD Photos",                 "link": "https://pixlino.com/attitude-girl-dp/",  "slug": "attitude-girl-dp"},
+            {"id": 104, "title": "Aesthetic Girl DP Collection",               "link": "https://pixlino.com/aesthetic-girl-dp/", "slug": "aesthetic-girl-dp"},
+            {"id": 105, "title": "Hidden Face Girl DP Images",                 "link": "https://pixlino.com/hidden-face-girl/",  "slug": "hidden-face-girl"},
+        ]
+        log(f"  [DRY RUN] Using {len(_published_posts_cache)} mock posts for internal linking")
 
     existing_titles = fetch_existing_titles() if not dry_run else set()
 
@@ -806,7 +973,8 @@ def run(posts_to_create=POSTS_PER_RUN, dry_run=False):
 
         # Step 3: Build post content
         focus_kw    = generate_focus_keyword(kw)
-        intro       = generate_intro(kw)
+        raw_intro   = generate_intro(kw)
+        intro       = inject_internal_links(raw_intro, kw, title, max_links=3)
         meta_desc   = generate_meta_description(kw)
         subheadings = fetch_subheadings_from_google(kw, count=5)
         category_id = match_category(title, categories)
@@ -893,4 +1061,3 @@ if __name__ == "__main__":
 
 
     run(posts_to_create=args.posts, dry_run=args.dry_run)
-
