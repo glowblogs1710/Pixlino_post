@@ -35,12 +35,12 @@ TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "your_token")
 TELEGRAM_CHAT_ID   = os.environ.get("TELEGRAM_CHAT_ID", "your_chat_id")
 
 # --- Post settings ---
-POSTS_PER_RUN      = 1            # change to 10 for production
+POSTS_PER_RUN      = 2           # change to 10 for production
 IMAGES_PER_HEADING = 10           # images per heading
 POST_STATUS        = "publish"    # publish instantly
 
 # --- Gap between posts ---
-POST_GAP_SECONDS   = 60          # change to 7200 for 2 hour gap in production
+POST_GAP_SECONDS   = 4500          # change to 7200 for 2 hour gap in production
 
 # --- Slug variation words (tried in order if base slug already exists) ---
 SLUG_VARIATIONS = ["hd", "4k", "new", "latest", "best", "images", "3d"]
