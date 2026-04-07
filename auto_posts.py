@@ -4,8 +4,9 @@ auto_posts.py — Fully Automatic WordPress Post Creator (v18)
 Changes from v17:
   ✅ Random startup sleep (0–30 minutes) — spreads actual start time
   ✅ Random gap between posts (30, 45, 60, 75, 90, 105, or 120 minutes)
-  ✅ --skip-sleep flag for manual/dry runs so you don't wait needlessly
-  ✅ Telegram startup message now shows actual randomized gap chosen
+  ✅ --skip-sleep flag skips ONLY the startup sleep, never the post gap
+  ✅ Gap between posts is ALWAYS applied — even on manual/dry runs
+  ✅ Telegram startup message shows chosen gap and startup sleep
 
 File structure:
   auto_posts.py              ← this script
@@ -41,7 +42,7 @@ IMAGES_PER_HEADING = 10           # images per heading
 POST_STATUS        = "publish"    # publish instantly
 
 # --- Random gap options (in seconds) ---
-# Script picks one randomly at startup and uses it for all gaps in that run.
+# Script picks ONE randomly at startup and uses it for ALL gaps in that run.
 # Options: 30 min, 45 min, 60 min, 75 min, 90 min, 105 min, 120 min
 POST_GAP_OPTIONS_SECONDS = [
     30 * 60,    # 30 minutes
@@ -55,6 +56,7 @@ POST_GAP_OPTIONS_SECONDS = [
 
 # --- Random startup sleep range (seconds) ---
 # Adds extra unpredictability on top of the varied cron times.
+# This is SEPARATE from the post gap and only skipped with --skip-sleep.
 STARTUP_SLEEP_MIN = 0           # minimum extra sleep at startup
 STARTUP_SLEEP_MAX = 30 * 60     # maximum extra sleep at startup (30 minutes)
 
@@ -93,9 +95,9 @@ AUTH = (USERNAME, APP_PASSWORD)
 class RunStats:
     def __init__(self):
         self.start_time     = datetime.now()
-        self.posts_created  = []   # list of dicts
-        self.posts_failed   = []   # list of keywords
-        self.posts_skipped  = []   # list of dicts {keyword, reason}
+        self.posts_created  = []
+        self.posts_failed   = []
+        self.posts_skipped  = []
         self.keywords_used  = []
         self.dry_run        = False
         self.gap_seconds    = 0    # chosen gap for this run
@@ -745,31 +747,36 @@ def run(posts_to_create=POSTS_PER_RUN, dry_run=False, skip_sleep=False):
     STATS.dry_run = dry_run
 
     # ── Pick a random gap for this run ────────────────────────
-    gap_seconds      = random.choice(POST_GAP_OPTIONS_SECONDS)
+    # NOTE: gap is ALWAYS applied regardless of dry_run or skip_sleep.
+    # --skip-sleep only controls the startup delay, never the post gap.
+    gap_seconds       = random.choice(POST_GAP_OPTIONS_SECONDS)
     STATS.gap_seconds = gap_seconds
-    gap_human        = seconds_to_human(gap_seconds)
+    gap_human         = seconds_to_human(gap_seconds)
 
     log("=" * 60)
-    log(f"Auto Posts v18 | target={posts_to_create} posts | dry_run={dry_run}")
+    log(f"Auto Posts v18 | target={posts_to_create} posts | dry_run={dry_run} | skip_sleep={skip_sleep}")
     log(f"Gap between posts this run: {gap_human} ({gap_seconds}s) — chosen randomly")
+    log(f"NOTE: Post gap is ALWAYS applied. --skip-sleep only skips startup delay.")
     log("=" * 60)
 
     # ── Random startup sleep ──────────────────────────────────
-    if skip_sleep or dry_run:
+    # Only skipped when --skip-sleep is passed (e.g. manual runs).
+    # NEVER affects the gap between posts.
+    if skip_sleep:
         startup_sleep = 0
-        log("  Startup sleep: SKIPPED (--skip-sleep or dry-run mode)")
+        log("  Startup sleep: SKIPPED (--skip-sleep flag)")
     else:
-        startup_sleep = random.randint(STARTUP_SLEEP_MIN, STARTUP_SLEEP_MAX)
-        STATS.startup_sleep = startup_sleep
-        sleep_human   = seconds_to_human(startup_sleep)
-        wake_time     = datetime.now() + timedelta(seconds=startup_sleep)
+        startup_sleep        = random.randint(STARTUP_SLEEP_MIN, STARTUP_SLEEP_MAX)
+        STATS.startup_sleep  = startup_sleep
+        sleep_human          = seconds_to_human(startup_sleep)
+        wake_time            = datetime.now() + timedelta(seconds=startup_sleep)
         log(f"  Startup sleep: {sleep_human} — waking at {wake_time.strftime('%I:%M %p')}")
 
     send_telegram(
         f"🚀 <b>Auto Posts Started</b>\n"
         f"Mode: {'DRY RUN' if dry_run else 'LIVE'}\n"
         f"Target: {posts_to_create} post(s)\n"
-        f"Gap Between Posts: <b>{gap_human}</b> (random)\n"
+        f"Gap Between Posts: <b>{gap_human}</b> (random — always applied)\n"
         f"Startup Sleep: {'None (skipped)' if startup_sleep == 0 else seconds_to_human(startup_sleep)}\n"
         f"Time: {STATS.start_time.strftime('%d %b %Y, %I:%M %p')}"
     )
@@ -914,15 +921,14 @@ def run(posts_to_create=POSTS_PER_RUN, dry_run=False, skip_sleep=False):
                 log(f"  ✗ Failed to create post for '{kw}'")
                 STATS.posts_failed.append(kw)
 
-        # Wait between posts (only if there's a next post)
+        # ── Gap between posts ─────────────────────────────────
+        # Applied after EVERY post except the last one.
+        # ALWAYS waits the full gap — skip_sleep has NO effect here.
         if i < len(selected) - 1:
-            if dry_run or skip_sleep:
-                log(f"  [SKIP] Would wait {gap_human} ({gap_seconds}s) before next post")
-            else:
-                next_post_time = datetime.now() + timedelta(seconds=gap_seconds)
-                log(f"  ⏳ Waiting {gap_human} ({gap_seconds}s) before next post...")
-                log(f"  ⏳ Next post at: {next_post_time.strftime('%d %b %Y %I:%M %p')}")
-                time.sleep(gap_seconds)
+            next_post_time = datetime.now() + timedelta(seconds=gap_seconds)
+            log(f"  ⏳ Waiting {gap_human} ({gap_seconds}s) before next post...")
+            log(f"  ⏳ Next post at: {next_post_time.strftime('%d %b %Y %I:%M %p')}")
+            time.sleep(gap_seconds)   # ← always runs, no condition
 
     # ── Final Summary ─────────────────────────────────────────
     log(f"\n{'='*60}")
@@ -942,7 +948,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Auto WordPress Post Creator v18")
     parser.add_argument("--posts",      type=int,            default=POSTS_PER_RUN, help="Number of posts to create")
     parser.add_argument("--dry-run",    action="store_true",                        help="Preview without posting to WordPress")
-    parser.add_argument("--skip-sleep", action="store_true",                        help="Skip random startup sleep (useful for manual runs)")
+    parser.add_argument("--skip-sleep", action="store_true",                        help="Skip random STARTUP sleep only. Post gap is always applied.")
     args = parser.parse_args()
 
     run(posts_to_create=args.posts, dry_run=args.dry_run, skip_sleep=args.skip_sleep)
