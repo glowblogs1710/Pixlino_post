@@ -1,12 +1,13 @@
 """
-auto_posts.py — Fully Automatic WordPress Post Creator (v18)
+auto_posts.py — Fully Automatic WordPress Post Creator (v19)
 ============================================================
-Changes from v17:
-  ✅ Random startup sleep (0–30 minutes) — spreads actual start time
-  ✅ Random gap between posts (30, 45, 60, 75, 90, 105, or 120 minutes)
-  ✅ --skip-sleep flag skips ONLY the startup sleep, never the post gap
-  ✅ Gap between posts is ALWAYS applied — even on manual/dry runs
-  ✅ Telegram startup message shows chosen gap and startup sleep
+Changes from v18:
+  ✅ Keywords used EXACTLY as written — no Google Autocomplete expansion
+  ✅ Each seed keyword in keywords.txt creates POSTS_PER_RUN posts
+  ✅ Title picks a random template from title_templates.txt (keyword unchanged)
+  ✅ Subheading 1 is always the exact keyword (title-cased)
+  ✅ Subheadings 2–5 still come from Google Autocomplete / fallbacks
+  ✅ Keyword saved to used_keywords.txt only once (not once per post)
 
 File structure:
   auto_posts.py              ← this script
@@ -330,25 +331,21 @@ def collect_keywords(used_keywords):
         log("  No seed keywords found in keywords.txt")
         return []
 
+    # Use each seed keyword exactly as written — no autocomplete expansion.
+    # Each seed is repeated POSTS_PER_RUN times so the main loop can create
+    # that many posts for it. Seeds already used are skipped.
     all_kws = []
     for seed in seeds:
-        suggestions = fetch_autocomplete(seed)
-        log(f"  Seed '{seed}' → {len(suggestions)} suggestions")
-        all_kws.extend(suggestions)
-        time.sleep(0.5)
+        if seed.lower() in used_keywords:
+            log(f"  Seed '{seed}' already used — skipping")
+            continue
+        for _ in range(POSTS_PER_RUN):
+            all_kws.append(seed)
 
-    all_kws.extend(seeds)
+    fresh = [kw for kw in all_kws if len(kw.split()) >= 1]
+    log(f"  Total keyword slots available: {len(fresh)} ({len(seeds)} seeds × {POSTS_PER_RUN} posts each)")
 
-    seen, unique = set(), []
-    for kw in all_kws:
-        if kw not in seen:
-            seen.add(kw)
-            unique.append(kw)
-
-    fresh = [kw for kw in unique if kw not in used_keywords and len(kw.split()) >= 3]
-    log(f"  Total fresh keywords available: {len(fresh)}")
-
-    check_keywords_low(len(fresh))
+    check_keywords_low(len([s for s in seeds if s.lower() not in used_keywords]))
 
     return fresh
 
@@ -496,23 +493,33 @@ def generate_meta_description(keyword):
 
 def fetch_subheadings_from_google(keyword, count=5):
     log(f"  Fetching subheadings from Google for: '{keyword}'")
+
+    pretty_kw = title_case_keyword(keyword)
+
+    # Subheading 1 is always the exact keyword — no autocomplete
+    result = [pretty_kw]
+    log(f"  Subheading 1 (exact keyword): '{pretty_kw}'")
+
+    # Remaining subheadings (2 onwards) come from Google Autocomplete
+    remaining = count - 1
     suggestions = fetch_autocomplete(keyword)
 
-    result = []
     for s in suggestions:
-        result.append(title_case_keyword(s))
+        candidate = title_case_keyword(s)
+        if candidate != pretty_kw and candidate not in result:
+            result.append(candidate)
         if len(result) >= count:
             break
 
-    log(f"  Google returned {len(result)} subheading suggestions")
+    log(f"  Google returned {len(result) - 1} additional subheading suggestions")
 
+    # Fill any remaining slots with fallbacks
     if len(result) < count:
         fallback_sets = load_subheading_fallbacks()
         if not fallback_sets:
             fallback_sets = [["Stylish", "Cute", "Aesthetic", "Attitude", "Sad"]]
 
         modifier_set = random.choice(fallback_sets)
-        pretty_kw    = title_case_keyword(keyword)
 
         for mod in modifier_set:
             if len(result) >= count:
@@ -837,6 +844,8 @@ def run(posts_to_create=POSTS_PER_RUN, dry_run=False, skip_sleep=False):
     existing_titles = fetch_existing_titles() if not dry_run else set()
 
     # ── Main loop ─────────────────────────────────────────────
+    saved_keywords_this_run = set()   # track which seeds we've already saved
+
     for i, kw in enumerate(selected):
         log(f"\n--- Post {i+1}/{len(selected)} | Keyword: '{kw}' ---")
 
@@ -906,7 +915,10 @@ def run(posts_to_create=POSTS_PER_RUN, dry_run=False, skip_sleep=False):
                 published_at = datetime.now().strftime("%d %b %Y %I:%M %p")
                 log(f"  ✓ Published! ID={post_id} | Slug={slug} | {published_at}")
                 log(f"  ✓ URL: {post_link}")
-                save_used_keyword(kw)
+                # Only save to used_keywords.txt once per unique seed keyword
+                if kw.lower() not in saved_keywords_this_run:
+                    save_used_keyword(kw)
+                    saved_keywords_this_run.add(kw.lower())
                 existing_titles.add(title.strip().lower())
 
                 STATS.posts_created.append({
