@@ -40,7 +40,7 @@ TELEGRAM_CHAT_ID   = os.environ.get("TELEGRAM_CHAT_ID", "your_chat_id")
 # --- Post settings ---
 POSTS_PER_RUN      = 2            # change to 10 for production
 IMAGES_PER_HEADING = 10           # images per heading
-POST_STATUS        = "publish"    # publish instantly
+POST_STATUS        = "draft"      # ← TEST MODE: saving as draft (change back to "publish" for production)
 
 # --- Random gap options (in seconds) ---
 # Script picks ONE randomly at startup and uses it for ALL gaps in that run.
@@ -756,7 +756,7 @@ def run(posts_to_create=POSTS_PER_RUN, dry_run=False, skip_sleep=False):
     # ── Pick a random gap for this run ────────────────────────
     # NOTE: gap is ALWAYS applied regardless of dry_run or skip_sleep.
     # --skip-sleep only controls the startup delay, never the post gap.
-    gap_seconds       = random.choice(POST_GAP_OPTIONS_SECONDS)
+    gap_seconds       = 0   # ← TEST MODE: no delay between posts (restore random.choice(POST_GAP_OPTIONS_SECONDS) for production)
     STATS.gap_seconds = gap_seconds
     gap_human         = seconds_to_human(gap_seconds)
 
