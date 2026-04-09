@@ -39,7 +39,7 @@ TELEGRAM_CHAT_ID   = os.environ.get("TELEGRAM_CHAT_ID", "your_chat_id")
 
 # --- Post settings ---
 POSTS_PER_RUN      = 2            # change to 10 for production
-IMAGES_PER_HEADING = 10           # images per heading
+IMAGES_PER_HEADING = 0           # images per heading
 POST_STATUS        = "draft"      # ← TEST MODE: saving as draft (change back to "publish" for production)
 
 # --- Random gap options (in seconds) ---
