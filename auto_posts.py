@@ -40,7 +40,7 @@ TELEGRAM_CHAT_ID   = os.environ.get("TELEGRAM_CHAT_ID", "your_chat_id")
 POSTS_PER_RUN      = 2            # how many posts to publish per run (per day)
 POSTS_PER_KEYWORD  = 5            # how many posts to create for each keyword (uses different title templates)
 IMAGES_PER_HEADING = 10           # images per heading
-POST_STATUS        = "draft"      # ← TEST MODE: saving as draft (change back to "publish" for production)
+POST_STATUS        = "publish"      # ← TEST MODE: saving as draft (change back to "publish" for production)
 
 # --- Random gap options (in seconds) ---
 POST_GAP_OPTIONS_SECONDS = [
