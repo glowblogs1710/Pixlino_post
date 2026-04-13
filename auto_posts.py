@@ -40,7 +40,7 @@ TELEGRAM_CHAT_ID   = os.environ.get("TELEGRAM_CHAT_ID", "your_chat_id")
 POSTS_PER_RUN      = 2            # how many posts to publish per run (per day)
 POSTS_PER_KEYWORD  = 5            # how many posts to create for each keyword (uses different title templates)
 IMAGES_PER_HEADING = 10           # images per heading
-POST_STATUS        = "publish"      # ← TEST MODE: saving as draft (change back to "publish" for production)
+POST_STATUS        = "draft"      # ← TEST MODE: saving as draft (change back to "publish" for production)
 
 # --- Random gap options (in seconds) ---
 POST_GAP_OPTIONS_SECONDS = [
@@ -735,10 +735,87 @@ def fetch_all_wp_media():
 
 
 # ============================================================
+# INTERNAL LINKS
+# ============================================================
+
+# Cache so we only hit the WP API once per run
+_recent_posts_cache = None
+
+def fetch_recent_posts_for_links(count=5):
+    """
+    Fetch the most recent published posts from WordPress.
+    Returns a list of {"title": "...", "link": "..."} dicts.
+    Results are cached for the entire run so we don't hammer the API.
+    """
+    global _recent_posts_cache
+    if _recent_posts_cache is not None:
+        return _recent_posts_cache
+
+    log("  Fetching recent posts for internal linking...")
+    try:
+        r = requests.get(
+            f"{WP_URL}/posts",
+            params={
+                "per_page": count,
+                "status":   "publish",
+                "_fields":  "title,link",
+                "orderby":  "date",
+                "order":    "desc",
+            },
+            auth=AUTH,
+            timeout=15
+        )
+        if r.status_code == 200:
+            posts = r.json()
+            result = []
+            for p in posts:
+                raw   = p.get("title", {})
+                title = raw.get("rendered", "") if isinstance(raw, dict) else str(raw)
+                link  = p.get("link", "")
+                if title and link:
+                    result.append({"title": title, "link": link})
+            log(f"  Fetched {len(result)} recent posts for internal links")
+            _recent_posts_cache = result
+            return result
+    except Exception as e:
+        log(f"  ⚠ Could not fetch recent posts for internal links: {e}")
+
+    _recent_posts_cache = []
+    return []
+
+
+def build_internal_links_html(recent_posts, current_title):
+    """
+    Build the 'You might also enjoy our related collections' paragraph.
+    Excludes the current post's title. Shows up to 3 links.
+    Returns an HTML string, or "" if there are no posts to link to.
+    """
+    candidates = [
+        p for p in recent_posts
+        if p["title"].strip().lower() != current_title.strip().lower()
+    ][:3]
+
+    if not candidates:
+        return ""
+
+    links_html = ", ".join(
+        f'<a href="{p["link"]}">{p["title"]}</a>'
+        for p in candidates
+    )
+
+    return (
+        f'<p style="font-size:16px;line-height:1.8;margin-bottom:28px;color:#333;">'
+        f'You might also enjoy our related collections: {links_html}.'
+        f'</p>'
+    )
+
+
+# ============================================================
 # HTML GALLERY BUILDER
 # ============================================================
 
-def build_html_gallery(subheadings, all_media, images_per_heading, keyword, intro_text):
+def build_html_gallery(subheadings, all_media, images_per_heading, keyword, intro_text,
+                       recent_posts=None, current_title=""):
     pretty_kw  = title_case_keyword(keyword)
     html_parts = []
 
@@ -750,6 +827,12 @@ def build_html_gallery(subheadings, all_media, images_per_heading, keyword, intr
             f'{intro_formatted}'
             f'</p>'
         )
+
+    # Internal linking block — shown right after the intro paragraph
+    if recent_posts:
+        internal_links_html = build_internal_links_html(recent_posts, current_title)
+        if internal_links_html:
+            html_parts.append(internal_links_html)
 
     pool = list(all_media)
     random.shuffle(pool)
@@ -919,6 +1002,13 @@ def run(posts_to_create=POSTS_PER_RUN, dry_run=False, skip_sleep=False):
 
     existing_titles = fetch_existing_titles() if not dry_run else set()
 
+    # ── Fetch recent posts for internal linking (once per run) ───
+    recent_posts_for_links = fetch_recent_posts_for_links(count=5) if not dry_run else [
+        {"title": "Hidden Face Girl Pic", "link": "https://pixlino.com/hidden-face-girl-pic/"},
+        {"title": "Sad Girl DP", "link": "https://pixlino.com/sad-girl-dp/"},
+        {"title": "Attitude Girl DP", "link": "https://pixlino.com/attitude-girl-dp/"},
+    ]
+
     # ── Track in-run progress per keyword ────────────────────
     # keyword_lower → count of posts successfully published this run
     in_run_published = {}
@@ -968,7 +1058,9 @@ def run(posts_to_create=POSTS_PER_RUN, dry_run=False, skip_sleep=False):
         log(f"  Meta Desc  : {meta_desc[:80]}...")
 
         html_content = build_html_gallery(
-            subheadings, all_media, IMAGES_PER_HEADING, kw, intro
+            subheadings, all_media, IMAGES_PER_HEADING, kw, intro,
+            recent_posts=recent_posts_for_links,
+            current_title=title
         )
 
         if dry_run:
