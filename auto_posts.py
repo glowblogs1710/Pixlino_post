@@ -911,7 +911,7 @@ def create_wp_post(title, slug, content, category_id, focus_kw, meta_desc):
 def run(posts_to_create=POSTS_PER_RUN, dry_run=False, skip_sleep=False):
     STATS.dry_run = dry_run
 
-    gap_seconds       = 0   # ← TEST MODE: no delay (restore random.choice(POST_GAP_OPTIONS_SECONDS) for production)
+    gap_seconds       =  random.choice(POST_GAP_OPTIONS_SECONDS)   # ← TEST MODE: no delay (restore random.choice(POST_GAP_OPTIONS_SECONDS) for production)
     STATS.gap_seconds = gap_seconds
     gap_human         = seconds_to_human(gap_seconds) if gap_seconds > 0 else "None (test mode)"
 
