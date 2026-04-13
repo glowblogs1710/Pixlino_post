@@ -804,7 +804,7 @@ def build_internal_links_html(recent_posts, current_title):
     )
 
     return (
-        f'<p style="font-size:16px;line-height:1.8;margin-bottom:28px;color:#333;">'
+        f'<p style="font-size:20px;line-height:1.8;margin-bottom:28px;color:#333;">'
         f'You might also enjoy our related collections: {links_html}.'
         f'</p>'
     )
