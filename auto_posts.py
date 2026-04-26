@@ -37,7 +37,7 @@ TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "your_token")
 TELEGRAM_CHAT_ID   = os.environ.get("TELEGRAM_CHAT_ID", "your_chat_id")
 
 # --- Post settings ---
-POSTS_PER_RUN      = 2            # how many posts to publish per run (per day)
+POSTS_PER_RUN      = 4            # how many posts to publish per run (per day)
 POSTS_PER_KEYWORD  = 5            # how many posts to create for each keyword (uses different title templates)
 IMAGES_PER_HEADING = 10           # images per heading
 POST_STATUS        = "publish"      # ← TEST MODE: saving as draft (change back to "publish" for production)
